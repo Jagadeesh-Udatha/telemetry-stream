@@ -1,0 +1,8 @@
+telemetry:
+  create-indexes: false
+  max-retries: 2
+
+logging:
+  level:
+    root: WARN
+    dev.jagadeesh: INFO

@@ -1,0 +1,8 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: telemetry-stream
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: telemetry-stream }

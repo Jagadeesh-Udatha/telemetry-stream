@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-stream
+  labels: { app: telemetry-stream }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: telemetry-stream }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: telemetry-stream }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8080"
+    spec:
+      # Let in-flight batches finish and offsets commit before the pod is killed.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: app
+          image: ghcr.io/jagadeesh-udatha/telemetry-stream:1.0.0
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom:
+            - configMapRef: { name: telemetry-stream }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 768Mi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              exec: { command: ["sh", "-c", "sleep 5"] }

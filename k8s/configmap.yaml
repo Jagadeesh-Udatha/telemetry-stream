@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetry-stream
+data:
+  KAFKA_BOOTSTRAP: kafka.messaging.svc.cluster.local:9092
+  MONGO_URI: mongodb://mongo.data.svc.cluster.local:27017/telemetry
+  CONSUMER_THREADS: "2"
+  SPRING_PROFILES_ACTIVE: json
