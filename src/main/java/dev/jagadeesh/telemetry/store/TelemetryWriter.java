@@ -41,6 +41,9 @@ public class TelemetryWriter {
                     .setOnInsert("speedKph", e.speedKph())
                     .setOnInsert("heading", e.heading())
                     .setOnInsert("receivedAt", receivedAt);
+            if (e.fuelPct() != null) {
+                insertOnly.setOnInsert("fuelPct", e.fuelPct());
+            }
             bulk.upsert(query(where("_id").is(e.eventId())), insertOnly);
         }
         return bulk.execute().getUpserts().size();

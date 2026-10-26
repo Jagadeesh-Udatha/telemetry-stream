@@ -1,4 +1,4 @@
-# Kafka (KRaft) + MongoDB + the ingestor, with the fleet simulator producing ~200 events/s.
+# Kafka (KRaft) + Schema Registry + MongoDB + the ingestor, with the fleet simulator producing ~200 events/s.
 #   docker compose up --build
 services:
   kafka:
@@ -13,15 +13,28 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  # Stores Avro schemas in the _schemas topic. New versions of a subject must be BACKWARD compatible.
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.8.0
+    depends_on: [kafka]
+    ports: ["8081:8081"]
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
+
   mongo:
     image: mongo:7.0
     ports: ["27017:27017"]
 
   ingestor:
     build: .
-    depends_on: [kafka, mongo]
+    depends_on: [kafka, mongo, schema-registry]
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
+      AVRO_ENABLED: "true"
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       MONGO_URI: mongodb://mongo:27017/telemetry
       SPRING_PROFILES_ACTIVE: simulator,json
     ports: ["8080:8080"]

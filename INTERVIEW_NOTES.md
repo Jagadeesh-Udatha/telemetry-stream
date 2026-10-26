@@ -64,3 +64,19 @@ For Kafka / MongoDB / Kubernetes / high-scale ingestion interviews. Each section
 - Schema Registry + Avro instead of JSON.
 - Replay tool for the DLT.
 - KEDA autoscaling on consumer lag instead of CPU.
+
+## Avro and Schema Registry
+
+**"Why Avro instead of JSON on Kafka?"** Smaller messages (no field names on the wire, binary numbers), a schema that is enforced at write time instead of discovered at read time, and safe evolution rules. JSON stays on `telemetry.raw` for old producers; new devices use `telemetry.raw.avro`.
+
+**"What is actually in an Avro message on Kafka?"** Byte 0 is a magic byte (0), bytes 1-4 the schema id, then the Avro binary. The consumer reads the id, fetches that writer schema from Schema Registry once (then caches it) and decodes. The schema never travels with every message.
+
+**"How do two schema versions share one topic?"** Avro schema resolution: the consumer decodes with the writer's schema and projects onto its reader schema (`GpsReading` v2). Fields the writer didn't have get their default (`fuelPct = null`); fields the reader doesn't know are skipped. `SchemaEvolutionTest` shows both directions.
+
+**"BACKWARD vs FORWARD vs FULL?"** BACKWARD: consumers on the new schema can read data written with the old one, so upgrade consumers first. FORWARD: old consumers can read new data, so upgrade producers first. FULL: both. Here the subject is BACKWARD and the v2 change happens to be FULL compatible.
+
+**"Which changes break compatibility?"** Adding a field without a default, removing a field that has no default, changing a type (double → string), renaming without an alias. The registry refuses to register them (HTTP 409), which `SchemaRegistryCompatibilityTest` checks against a real registry.
+
+**"What happens when someone sends JSON to the Avro topic?"** No magic byte, so `KafkaAvroDeserializer` throws. `ErrorHandlingDeserializer` catches it, the listener gets a null value plus the exception in a header, and the original bytes go to `telemetry.raw.avro.DLT` with the reason. The partition keeps moving.
+
+**"Who registers schemas?"** In production, the CI pipeline, not the apps (`auto.register.schemas=false` on producers), so a bad build can't change the contract. The only schema this service registers is for its own dead-letter subject.

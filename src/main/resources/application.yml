@@ -45,6 +45,10 @@ telemetry:
   retention: 30d
   create-indexes: true
   max-retries: 3
+  avro:
+    enabled: ${AVRO_ENABLED:false}
+    topic: telemetry.raw.avro
+    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
 
 ---
 # JSON logs for log aggregation (ELK / Loki). Enabled in Kubernetes via SPRING_PROFILES_ACTIVE=json.

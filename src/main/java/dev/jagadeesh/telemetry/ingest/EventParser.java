@@ -32,6 +32,11 @@ public class EventParser {
         if (event == null) {
             throw new InvalidEventException("Empty payload", null);
         }
+        return validate(event);
+    }
+
+    /** Same rules for every wire format, so a JSON and an Avro event are accepted or rejected alike. */
+    public TelemetryEvent validate(TelemetryEvent event) {
         Set<ConstraintViolation<TelemetryEvent>> violations = validator.validate(event);
         if (!violations.isEmpty()) {
             String detail = violations.stream()

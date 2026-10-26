@@ -9,5 +9,5 @@ import java.time.Instant;
 /** A stored GPS point. The event id is the document id, which makes re-delivered events harmless. */
 @Document("telemetry_points")
 public record TelemetryPoint(@Id String eventId, String vehicleId, Instant ts, GeoJsonPoint location,
-                             double speedKph, double heading, Instant receivedAt) {
+                             double speedKph, double heading, Double fuelPct, Instant receivedAt) {
 }
