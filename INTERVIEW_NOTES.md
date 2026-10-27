@@ -51,11 +51,25 @@ For Kafka / MongoDB / Kubernetes / high-scale ingestion interviews. Each section
 
 - Micrometer counters for received/stored/duplicate/stale/alerts and a batch-duration timer with p95/p99, scraped by Prometheus (pod annotations).
 - `json` profile switches logs to ECS JSON (Spring Boot 3.4 structured logging) for ELK/Loki; MDC carries `batchSize`.
+- Traces: Micrometer Observation API with the OpenTelemetry bridge, OTLP to a Collector, stored in Tempo. See the questions below.
+
+**"Why Micrometer Observation instead of the OpenTelemetry API directly?"** One `Observation` gives both a timer (metrics) and a span (traces), and Spring Kafka, Spring MVC and the Mongo driver already speak it. The OTel bridge turns it into OTel spans, so the export side is still standard OTLP.
+
+**"How does a trace cross Kafka?"** The producer observation writes a W3C `traceparent` header (`00-<traceId>-<spanId>-01`) on the record; the consumer side extracts it and starts a child span. `TracePropagationKafkaTest` reads the header off a real alert record and checks it matches the batch span.
+
+**"Why does the batch span start a new trace?"** A batch holds up to 500 records from different producers, so there is no single parent. The options are a new root per batch (done here) or span links to every producer context; links are the next step if per-device tracing is needed.
+
+**"Why a Collector instead of exporting straight to Tempo?"** The app stays vendor-neutral and doesn't block on a slow backend; the collector batches, limits memory, and can do tail sampling (keep every trace with an error, 10% of the rest), which head sampling in the app can't.
+
+**"Metrics vs traces vs logs here?"** Metrics answer "is it slow / failing" cheaply (alerting on p99 and consumer lag). Traces answer "where was this batch slow" (Mongo bulk write vs alert publish). Logs carry the detail (DLT reason) and the trace id to jump between them. Exemplars connect a latency bucket to a concrete trace.
+
+**"What would you alert on?"** Consumer lag growing for 5 minutes, DLT rate above zero, p99 batch latency above the poll interval budget, and the error ratio of `telemetry_process_seconds_count{error!="none"}`.
 
 ## Testing strategy
 
 - Unit tests for the processor logic with Mockito.
 - Embedded Kafka test through the real listener container and error handler (DLT, retry, permanent failure).
+- Embedded Kafka + in-memory span exporter to prove trace propagation through a real record header.
 - Real MongoDB through Testcontainers for the query semantics mocks can't prove (E11000 behaviour, geo index, TTL index creation).
 
 ## What I'd add next

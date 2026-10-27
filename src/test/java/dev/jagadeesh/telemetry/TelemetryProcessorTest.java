@@ -8,6 +8,7 @@ import dev.jagadeesh.telemetry.ingest.TelemetryProcessor;
 import dev.jagadeesh.telemetry.store.Alert;
 import dev.jagadeesh.telemetry.store.TelemetryWriter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -40,7 +41,7 @@ class TelemetryProcessorTest {
     void setUp() {
         var props = new TelemetryProperties("raw", "alerts", 80, Duration.ofDays(30), false, 3);
         processor = new TelemetryProcessor(writer, new AlertRules(props), publisher, meters,
-                Clock.fixed(T0, ZoneOffset.UTC));
+                Clock.fixed(T0, ZoneOffset.UTC), ObservationRegistry.NOOP);
         when(writer.advanceState(any(), any())).thenReturn(true);
     }
 

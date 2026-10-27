@@ -1,0 +1,76 @@
+# Adds traces, metrics dashboards and centralised logs on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
+#
+#   Grafana        http://localhost:3000   (dashboard "Telemetry Stream", Explore -> Tempo for traces)
+#   Prometheus     http://localhost:9090
+#   Kibana         http://localhost:5601   (index pattern telemetry-logs-*)
+#
+# Flow: ingestor --OTLP--> otel-collector --> Tempo
+#       Prometheus scrapes /actuator/prometheus
+#       ingestor stdout (ECS JSON) --fluentd driver--> Fluent Bit --> Elasticsearch <-- Kibana / Grafana
+services:
+  ingestor:
+    depends_on: [kafka, mongo, schema-registry, otel-collector, fluent-bit]
+    environment:
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OTLP_TRACING_TRANSPORT: http
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: telemetry-stream
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on: [tempo]
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus, tempo, elasticsearch]
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.1.9
+    volumes:
+      - ./observability/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    ports: ["24224:24224"]
+    depends_on: [elasticsearch]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports: ["5601:5601"]
+    depends_on: [elasticsearch]

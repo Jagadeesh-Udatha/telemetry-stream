@@ -1,0 +1,23 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # Exemplars on the latency histogram link a slow bucket straight to a trace in Tempo.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    url: http://tempo:3200
+  - name: Elasticsearch
+    uid: elasticsearch
+    type: elasticsearch
+    url: http://elasticsearch:9200
+    jsonData:
+      index: "telemetry-logs-*"
+      timeField: "@timestamp"

@@ -7,3 +7,6 @@ data:
   MONGO_URI: mongodb://mongo.data.svc.cluster.local:27017/telemetry
   CONSUMER_THREADS: "2"
   SPRING_PROFILES_ACTIVE: json
+  # OpenTelemetry Collector (e.g. the opentelemetry-collector Helm chart) in the observability namespace
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4318/v1/traces
+  TRACE_SAMPLING: "0.1"
