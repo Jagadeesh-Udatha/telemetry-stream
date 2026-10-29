@@ -13,10 +13,6 @@ spec:
   template:
     metadata:
       labels: { app: telemetry-stream }
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/path: /actuator/prometheus
-        prometheus.io/port: "8080"
     spec:
       # Let in-flight batches finish and offsets commit before the pod is killed.
       terminationGracePeriodSeconds: 45

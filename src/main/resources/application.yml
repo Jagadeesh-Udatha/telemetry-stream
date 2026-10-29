@@ -23,16 +23,12 @@ spring:
       type: batch
       ack-mode: batch
       concurrency: ${CONSUMER_THREADS:3}
-      observation-enabled: true
-    # Producer spans + a W3C traceparent header on every record we send (alerts, dead letters).
-    template:
-      observation-enabled: true
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics
   endpoint:
     health:
       probes:
@@ -43,10 +39,6 @@ management:
     distribution:
       percentiles-histogram:
         telemetry.process: true
-  tracing:
-    sampling:
-      probability: ${TRACE_SAMPLING:1.0}
-  # Spans are exported over OTLP only when MANAGEMENT_OTLP_TRACING_ENDPOINT is set (docker compose, Kubernetes).
 
 telemetry:
   raw-topic: telemetry.raw
@@ -55,13 +47,9 @@ telemetry:
   retention: 30d
   create-indexes: true
   max-retries: 3
-  avro:
-    enabled: ${AVRO_ENABLED:false}
-    topic: telemetry.raw.avro
-    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
 
 ---
-# JSON logs for log aggregation (ELK / Loki). Enabled in Kubernetes via SPRING_PROFILES_ACTIVE=json.
+# JSON logs, one object per line (kubectl logs friendly). Enabled in Kubernetes via SPRING_PROFILES_ACTIVE=json.
 spring:
   config:
     activate:

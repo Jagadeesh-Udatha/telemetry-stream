@@ -19,7 +19,3 @@ jobs:
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
           ./kubeconform -strict -summary k8s/
-      - name: Validate observability compose stack
-        run: docker compose -f docker-compose.yml -f docker-compose.observability.yml config --quiet
-      - name: Validate Grafana dashboard JSON
-        run: python3 -m json.tool observability/grafana/dashboards/telemetry-stream.json > /dev/null

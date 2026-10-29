@@ -1,8 +1,0 @@
-global:
-  scrape_interval: 10s
-
-scrape_configs:
-  - job_name: telemetry-stream
-    metrics_path: /actuator/prometheus
-    static_configs:
-      - targets: ["ingestor:8080"]

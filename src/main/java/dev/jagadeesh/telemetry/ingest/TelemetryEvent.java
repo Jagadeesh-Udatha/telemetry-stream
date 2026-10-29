@@ -9,8 +9,8 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 
 /**
- * One GPS reading from a vehicle, as published on the raw topic (JSON) or telemetry.raw.avro (Avro).
- * Boxed numbers so a missing field fails validation. fuelPct is optional: only Avro v2 devices send it.
+ * One GPS reading from a vehicle, published as JSON on the raw topic.
+ * Boxed numbers so a missing field fails validation. fuelPct is optional: older devices don't send it.
  */
 public record TelemetryEvent(
         @NotBlank @Size(max = 64) String eventId,

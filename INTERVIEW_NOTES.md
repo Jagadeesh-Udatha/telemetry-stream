@@ -19,7 +19,7 @@ For Kafka / MongoDB / Kubernetes / high-scale ingestion interviews. Each section
 
 **"Producer settings?"** `acks=all` + `enable.idempotence=true`: no loss on leader failover, and no duplicates from producer retries. `linger.ms=5` batches sends.
 
-**"What's consumer lag and how do you watch it?"** Latest offset minus committed offset per partition. Exported by the Kafka client metrics to Prometheus; alert when it keeps growing. Fixes: more partitions + consumers, bigger batches, faster writes.
+**"What's consumer lag and how do you watch it?"** Latest offset minus committed offset per partition. Exposed by the Kafka client metrics in /actuator/metrics (or `kafka-consumer-groups --describe`); alert when it keeps growing. Fixes: more partitions + consumers, bigger batches, faster writes.
 
 **"What triggers a rebalance and why do you care?"** Pods joining/leaving, missed heartbeats, `max.poll.interval.ms` exceeded by a slow batch. During a rebalance consumption pauses. The HPA has a 5-minute scale-down window so flapping doesn't cause rebalance storms.
 
@@ -47,50 +47,22 @@ For Kafka / MongoDB / Kubernetes / high-scale ingestion interviews. Each section
 - **Config** via ConfigMap env vars; secrets would go in a Secret / external secret store.
 - Manifests are validated in CI with `kubeconform`.
 
-## Observability
+## Monitoring
 
-- Micrometer counters for received/stored/duplicate/stale/alerts and a batch-duration timer with p95/p99, scraped by Prometheus (pod annotations).
-- `json` profile switches logs to ECS JSON (Spring Boot 3.4 structured logging) for ELK/Loki; MDC carries `batchSize`.
-- Traces: Micrometer Observation API with the OpenTelemetry bridge, OTLP to a Collector, stored in Tempo. See the questions below.
+- Micrometer counters for received/stored/duplicate/stale/alerts and a batch-duration timer with p95/p99, read from `/actuator/metrics`.
+- `json` profile switches logs to JSON (Spring Boot 3.4 structured logging), one object per line for `kubectl logs`; MDC carries `batchSize`.
 
-**"Why Micrometer Observation instead of the OpenTelemetry API directly?"** One `Observation` gives both a timer (metrics) and a span (traces), and Spring Kafka, Spring MVC and the Mongo driver already speak it. The OTel bridge turns it into OTel spans, so the export side is still standard OTLP.
-
-**"How does a trace cross Kafka?"** The producer observation writes a W3C `traceparent` header (`00-<traceId>-<spanId>-01`) on the record; the consumer side extracts it and starts a child span. `TracePropagationKafkaTest` reads the header off a real alert record and checks it matches the batch span.
-
-**"Why does the batch span start a new trace?"** A batch holds up to 500 records from different producers, so there is no single parent. The options are a new root per batch (done here) or span links to every producer context; links are the next step if per-device tracing is needed.
-
-**"Why a Collector instead of exporting straight to Tempo?"** The app stays vendor-neutral and doesn't block on a slow backend; the collector batches, limits memory, and can do tail sampling (keep every trace with an error, 10% of the rest), which head sampling in the app can't.
-
-**"Metrics vs traces vs logs here?"** Metrics answer "is it slow / failing" cheaply (alerting on p99 and consumer lag). Traces answer "where was this batch slow" (Mongo bulk write vs alert publish). Logs carry the detail (DLT reason) and the trace id to jump between them. Exemplars connect a latency bucket to a concrete trace.
-
-**"What would you alert on?"** Consumer lag growing for 5 minutes, DLT rate above zero, p99 batch latency above the poll interval budget, and the error ratio of `telemetry_process_seconds_count{error!="none"}`.
+**"What would you alert on?"** Consumer lag growing for 5 minutes, DLT rate above zero, and p99 batch latency above the poll interval budget.
 
 ## Testing strategy
 
 - Unit tests for the processor logic with Mockito.
 - Embedded Kafka test through the real listener container and error handler (DLT, retry, permanent failure).
-- Embedded Kafka + in-memory span exporter to prove trace propagation through a real record header.
 - Real MongoDB through Testcontainers for the query semantics mocks can't prove (E11000 behaviour, geo index, TTL index creation).
 
 ## What I'd add next
 
 - Geofence rules (enter/exit polygons, `$geoIntersects`) and route-deviation, as in my SafeTrax work.
-- Schema Registry + Avro instead of JSON.
+- Message versioning: a `schemaVersion` field on the JSON payload so old and new devices can share the topic.
 - Replay tool for the DLT.
 - KEDA autoscaling on consumer lag instead of CPU.
-
-## Avro and Schema Registry
-
-**"Why Avro instead of JSON on Kafka?"** Smaller messages (no field names on the wire, binary numbers), a schema that is enforced at write time instead of discovered at read time, and safe evolution rules. JSON stays on `telemetry.raw` for old producers; new devices use `telemetry.raw.avro`.
-
-**"What is actually in an Avro message on Kafka?"** Byte 0 is a magic byte (0), bytes 1-4 the schema id, then the Avro binary. The consumer reads the id, fetches that writer schema from Schema Registry once (then caches it) and decodes. The schema never travels with every message.
-
-**"How do two schema versions share one topic?"** Avro schema resolution: the consumer decodes with the writer's schema and projects onto its reader schema (`GpsReading` v2). Fields the writer didn't have get their default (`fuelPct = null`); fields the reader doesn't know are skipped. `SchemaEvolutionTest` shows both directions.
-
-**"BACKWARD vs FORWARD vs FULL?"** BACKWARD: consumers on the new schema can read data written with the old one, so upgrade consumers first. FORWARD: old consumers can read new data, so upgrade producers first. FULL: both. Here the subject is BACKWARD and the v2 change happens to be FULL compatible.
-
-**"Which changes break compatibility?"** Adding a field without a default, removing a field that has no default, changing a type (double → string), renaming without an alias. The registry refuses to register them (HTTP 409), which `SchemaRegistryCompatibilityTest` checks against a real registry.
-
-**"What happens when someone sends JSON to the Avro topic?"** No magic byte, so `KafkaAvroDeserializer` throws. `ErrorHandlingDeserializer` catches it, the listener gets a null value plus the exception in a header, and the original bytes go to `telemetry.raw.avro.DLT` with the reason. The partition keeps moving.
-
-**"Who registers schemas?"** In production, the CI pipeline, not the apps (`auto.register.schemas=false` on producers), so a bad build can't change the contract. The only schema this service registers is for its own dead-letter subject.

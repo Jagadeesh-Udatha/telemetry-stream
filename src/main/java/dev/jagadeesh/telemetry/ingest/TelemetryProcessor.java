@@ -4,8 +4,6 @@ import dev.jagadeesh.telemetry.store.Alert;
 import dev.jagadeesh.telemetry.store.TelemetryWriter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -30,29 +28,21 @@ public class TelemetryProcessor {
     private final AlertPublisher publisher;
     private final MeterRegistry meters;
     private final Clock clock;
-    private final ObservationRegistry observations;
     private final Timer batchTimer;
 
     public TelemetryProcessor(TelemetryWriter writer, AlertRules rules, AlertPublisher publisher,
-                              MeterRegistry meters, Clock clock, ObservationRegistry observations) {
+                              MeterRegistry meters, Clock clock) {
         this.writer = writer;
         this.rules = rules;
         this.publisher = publisher;
         this.meters = meters;
         this.clock = clock;
-        this.observations = observations;
         this.batchTimer = Timer.builder("telemetry.batch.duration").publishPercentiles(0.5, 0.95, 0.99).register(meters);
     }
 
-    /**
-     * One span per batch. Alerts are published inside it, so every alert record carries this span's traceparent
-     * and a downstream consumer joins the same trace. Batch size is high-cardinality: a span attribute, not a metric tag.
-     */
+    /** Processes one Kafka batch; the batch duration is recorded in /actuator/metrics. */
     public BatchResult process(List<TelemetryEvent> events) {
-        return Observation.createNotStarted("telemetry.process", observations)
-                .contextualName("telemetry process batch")
-                .highCardinalityKeyValue("batch.size", String.valueOf(events.size()))
-                .observe(() -> batchTimer.record(() -> doProcess(events)));
+        return batchTimer.record(() -> doProcess(events));
     }
 
     private BatchResult doProcess(List<TelemetryEvent> events) {
